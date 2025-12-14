@@ -11,6 +11,7 @@
 
 from typing import Any, Literal
 from traceback import format_exc
+from enum import StrEnum
 from selenium.webdriver import Edge, Chrome, EdgeOptions, ChromeOptions
 from reydb import rorm, DatabaseEngine
 from reykit.rbase import throw
@@ -21,6 +22,7 @@ from .rbase import FetchCrawl
 
 
 __all__ = (
+    'CrawlBrowserPageStatusEnum',
     'DatabaseORMTableCrawlBrowserPage',
     'FetchCrawlBrowser',
     'crawl_page',
@@ -28,6 +30,21 @@ __all__ = (
     'wait_db_crawl_task',
     'crawl_page_use_db'
 )
+
+
+class CrawlBrowserPageStatusEnum(StrEnum):
+    """
+    Crawl browser page status enumeration type.
+    """
+
+    WAIT = 'wait'
+    'Wait crawl.'
+    SUCCESS = 'success'
+    'Crawl successded.'
+    FAIL = 'fail'
+    'Crawl failed.'
+    CANCEL = 'cancel'
+    'Crawl cancelled.'
 
 
 class DatabaseORMTableCrawlBrowserPage(rorm.Table):
@@ -42,18 +59,7 @@ class DatabaseORMTableCrawlBrowserPage(rorm.Table):
     id: int = rorm.Field(key_auto=True, comment='ID.')
     url: str = rorm.Field(rorm.types.VARCHAR(8182), not_null=True, comment='Target URL.')
     html: str = rorm.Field(rorm.types.TEXT, comment='Crawled HTML text.')
-    status: int = rorm.Field(
-        field_type=rorm.types.SMALLINT,
-        field_default='0',
-        not_null=True,
-        comment=(
-            'Crawl status, '
-            '0 is not crawl, '
-            '1 is crawl success, '
-            '2 is crawl fail, '
-            '3 is crawl cancel.'
-        )
-    )
+    status: int = rorm.Field(rorm.ENUM(CrawlBrowserPageStatusEnum), field_default=CrawlBrowserPageStatusEnum.WAIT, not_null=True, comment='Crawl status.')
     note: str = rorm.Field(rorm.types.VARCHAR(500), comment='Note.')
 
 
@@ -162,7 +168,7 @@ class FetchCrawlBrowser(FetchCrawl):
         task_table = self.db_engine.execute.select(
             'crawl_browser_page',
             ['id', 'url'],
-            '"status" = 0',
+            f'"status" = \'{CrawlBrowserPageStatusEnum.WAIT}\'',
             order='"create_time" ASC'
         )
 
@@ -173,9 +179,9 @@ class FetchCrawlBrowser(FetchCrawl):
             except BaseException:
                 exc_text = format_exc()
                 print(exc_text)
-                status = 2
+                status = CrawlBrowserPageStatusEnum.FAIL
             else:
-                status = 1
+                status = CrawlBrowserPageStatusEnum.SUCCESS
 
             ## Database.
             data = {
@@ -337,7 +343,7 @@ def wait_db_crawl_task(
 
         # Complete.
         row = result.to_row()
-        if row['status'] == 1:
+        if row['status'] == CrawlBrowserPageStatusEnum.SUCCESS:
             html = row['html']
             return html
 
